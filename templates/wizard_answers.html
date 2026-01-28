@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Wizard: răspunde la întrebări</h1>
+<p class="muted"><b>Goal:</b> {{ goal }} | <b>Model:</b> {{ model }}</p>
+
+<form method="post">
+  {% for q in questions %}
+    <div class="card">
+      <div><b>{{ q.q }}</b></div>
+      <input name="{{ q.id }}" style="width:100%;margin-top:8px" placeholder="(lasă gol dacă nu contează)">
+      <div class="muted" style="margin-top:6px">id: {{ q.id }}</div>
+    </div>
+  {% endfor %}
+
+  <button type="submit">Creează profilul</button>
+</form>
+{% endblock %}

@@ -162,7 +162,7 @@ def extract_location_from_html(html: str):
         return city or full
 
     return None
-def scrape(query: str, model: str, max_pages: int | None = None):
+def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None, max_ads: int | None = None):
     init_db()
     max_pages = max_pages or settings.MAX_PAGES
 
@@ -190,9 +190,9 @@ def scrape(query: str, model: str, max_pages: int | None = None):
                         links.append(full)
 
             for url in links:
-                if collected >= settings.MAX_ADS_PER_RUN:
+                limit_ads = max_ads or settings.MAX_ADS_PER_RUN
+                if collected >= limit_ads:
                     break
-
                 ad_page = context.new_page()
                 try:
                     ad_page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -283,6 +283,7 @@ def scrape(query: str, model: str, max_pages: int | None = None):
                     from datetime import timezone
 
                     ad = {
+                        "profile_id":profile_id,
                         "url": url,
                         "title": title or "",
                         "description": desc or "",

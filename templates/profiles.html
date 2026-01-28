@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Profiles</h1>
+<p><a href="{{ url_for('profile_new') }}">+ New profile</a></p>
+
+{% for p in profiles %}
+  <div class="card">
+    <div><b>{{ p.name }}</b> <span class="muted">#{{ p.id }}</span></div>
+    <div class="muted">{{ p.notes or "" }}</div>
+    <p>
+      <a href="{{ url_for('profile_edit', profile_id=p.id) }}">Edit</a> |
+      <a href="{{ url_for('profile_delete', profile_id=p.id) }}" onclick="return confirm('Delete profile?')">Delete</a> |
+      <a href="{{ url_for('index', profile_id=p.id) }}">View ads</a>
+    </p>
+  </div>
+{% else %}
+  <p class="muted">No profiles yet.</p>
+{% endfor %}
+{% endblock %}

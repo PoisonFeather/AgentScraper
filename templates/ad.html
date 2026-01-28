@@ -32,7 +32,12 @@
   <p class="mt-2">{{ ad.notes }}</p>
 
   <h6>Semnale</h6>
-  <pre class="p-3 bg-white rounded shadow-sm">{{ ad.signals_positive }}</pre>
+  <h6>Semnale pozitive</h6>
+<ul>
+  {% for s in ad.signals_positive or [] %}
+    <li>{{ s }}</li>
+  {% endfor %}
+</ul>
   <pre class="p-3 bg-white rounded shadow-sm">{{ ad.signals_negative }}</pre>
 
   <h6>Plan rapid de test</h6>

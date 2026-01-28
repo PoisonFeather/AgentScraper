@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
+<form method="get" style="margin-bottom:12px">
+  <label>Profile</label>
+  <select name="profile_id">
+    <option value="">(all)</option>
+    {% for p in profiles %}
+      <option value="{{ p.id }}" {% if selected_profile_id == p.id %}selected{% endif %}>
+        {{ p.name }}
+      </option>
+    {% endfor %}
+  </select>
+
+  <label style="margin-left:12px">Min score</label>
+  <input name="min_score" value="{{ min_score if min_score is not none else '' }}" style="width:80px">
+
+  <button type="submit">Apply</button>
+</form>
 <div class="row g-3">
   {% for ad in ads %}
   <div class="col-12 col-md-6 col-lg-4">

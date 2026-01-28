@@ -15,7 +15,7 @@ class Settings:
 
     # Scrape limits
     MAX_PAGES: int = 2
-    MAX_ADS_PER_RUN: int = 1
+    MAX_ADS_PER_RUN: int = 40
     MIN_SECONDS_BETWEEN_PAGES: float = 1.2
 
     # Distance reference (Cluj-Napoca)
