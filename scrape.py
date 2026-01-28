@@ -139,53 +139,27 @@ def extract_title_desc_location_price(html: str):
             )
 
     return data
+
+
+def normalize_city(loc: str) -> str:
+    # ex: "Bucuresti - Ilfov, Bucuresti, Sectorul 5"
+    parts = [p.strip() for p in (loc or "").split(",") if p.strip()]
+    if not parts:
+        return ""
+    # alege primul “oraș” care nu e județ combinat
+    # în exemplu: parts[0] = "Bucuresti - Ilfov" (nu ideal), parts[1] = "Bucuresti" (ideal)
+    if len(parts) >= 2:
+        return parts[1]
+    return parts[0]
+
 def extract_location_from_html(html: str):
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1) Cea mai stabilă zonă: map-aside-section (Localitate)
-    box = soup.select_one("[data-testid='map-aside-section']")
-    if box:
-        # Prefer "Bacau" (p.css-3cz5o2)
-        p = box.select_one("p.css-3cz5o2")
-        if p:
-            txt = p.get_text(" ", strip=True)
-            if txt:
-                return txt
-
-        # Fallback: "Bacau," (p.css-9pna1a)
-        p = box.select_one("p.css-9pna1a")
-        if p:
-            txt = p.get_text(" ", strip=True).strip().rstrip(",")
-            if txt:
-                return txt
-
-        # Fallback: imaginea staticmap are alt="Bacau"
-        img = box.select_one("img[alt]")
-        if img and img.get("alt"):
-            return img["alt"].strip()
-
-    # 2) Fallback generic: pe lângă distance-field (dacă nu există map-aside)
-    dist = soup.select_one("[data-testid='distance-field']")
-    if dist:
-        container = dist.find_parent("section") or dist.find_parent("div")
-        if container:
-            # întâi încearcă p-urile “cunoscute”
-            p = container.select_one("p.css-3cz5o2") or container.select_one("p.css-9pna1a")
-            if p:
-                txt = p.get_text(" ", strip=True).strip().rstrip(",")
-                if txt:
-                    return txt
-
-            # ultim fallback: caută un <p> fără "km" și fără "Localitate"
-            for p in container.find_all("p"):
-                txt = p.get_text(" ", strip=True)
-                low = txt.lower()
-                if not txt:
-                    continue
-                if "km" in low or "localitate" in low or "anunț" in low:
-                    continue
-                # scoate virgula finală
-                return txt.strip().rstrip(",")
+    img = soup.select_one(".qa-static-ad-map-container img[alt]")
+    if img and img.get("alt"):
+        full = img["alt"].strip()
+        city = normalize_city(full)
+        return city or full
 
     return None
 def scrape(query: str, model: str, max_pages: int | None = None):
