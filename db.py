@@ -247,13 +247,69 @@ import sqlite3
 from datetime import datetime, timezone
 
 def insert_profile(p: dict):
+    """
+    Acceptă fie:
+      - format "uman": queries/hard_yes/hard_no/questions ca list[str]
+      - format "db":  queries_json/hard_yes_json/hard_no_json/questions_json ca string JSON
+    """
+    from datetime import datetime, timezone
+    import json
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # normalizează numele
+    name = (p.get("name") or "").strip()
+    if not name:
+        raise ValueError("Profile name is required")
+
+    # dacă avem deja *_json, le folosim; altfel serializăm listele
+    def ensure_json(key_list: str, key_json: str) -> str:
+        if p.get(key_json):
+            return p[key_json]
+        val = p.get(key_list, [])
+        if val is None:
+            val = []
+        if isinstance(val, str):
+            # acceptă și text cu linii
+            val = [x.strip() for x in val.splitlines() if x.strip()]
+        if not isinstance(val, list):
+            val = [str(val)]
+        val = [str(x).strip() for x in val if str(x).strip()]
+        return json.dumps(val, ensure_ascii=False)
+
+    prof = {
+        "name": name,
+        "notes": (p.get("notes") or "").strip(),
+        "queries_json": ensure_json("queries", "queries_json"),
+        "hard_yes_json": ensure_json("hard_yes", "hard_yes_json"),
+        "hard_no_json": ensure_json("hard_no", "hard_no_json"),
+        "questions_json": ensure_json("questions", "questions_json"),
+        "created_at": p.get("created_at") or now,
+        "updated_at": now,
+    }
+
     with connect() as con:
-        con.execute("""
-        INSERT INTO profiles (name, notes, queries_json, hard_yes_json, hard_no_json, questions_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            p["name"], p.get("notes",""),
-            p["queries_json"], p["hard_yes_json"], p["hard_no_json"], p["questions_json"],
-            p.get("created_at"), p.get("updated_at")
-        ))
+        con.execute(
+            """
+            INSERT INTO profiles (name, notes, queries_json, hard_yes_json, hard_no_json, questions_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+              notes=excluded.notes,
+              queries_json=excluded.queries_json,
+              hard_yes_json=excluded.hard_yes_json,
+              hard_no_json=excluded.hard_no_json,
+              questions_json=excluded.questions_json,
+              updated_at=excluded.updated_at
+            """,
+            (
+                prof["name"],
+                prof["notes"],
+                prof["queries_json"],
+                prof["hard_yes_json"],
+                prof["hard_no_json"],
+                prof["questions_json"],
+                prof["created_at"],
+                prof["updated_at"],
+            ),
+        )
         con.commit()

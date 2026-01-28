@@ -1,28 +1,63 @@
 <!doctype html>
-<html>
+<html lang="ro">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title if title else "AgentScraper" }}</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
   <style>
-    body{font-family:system-ui,Arial;margin:24px;max-width:1100px}
-    input,textarea,select,button{font-size:14px}
-    textarea{width:100%;height:120px}
-    .row{display:flex;gap:12px}
-    .col{flex:1}
-    .card{border:1px solid #ddd;border-radius:10px;padding:12px;margin:10px 0}
-    .muted{color:#666}
-    a{color:#0b5;text-decoration:none}
-    a:hover{text-decoration:underline}
-    pre{background:#fafafa;padding:10px;border-radius:8px;border:1px solid #eee;white-space:pre-wrap}
-    .topnav{display:flex;gap:12px;margin-bottom:12px}
+    /* Layout */
+    body { font-family: system-ui, Arial; }
+    .page-wrap { max-width: 1200px; }
+
+    /* Make links less neon */
+    a { text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Keep your <pre> nice */
+    pre{
+      background:#fff;
+      border:1px solid rgba(0,0,0,.08);
+      border-radius:10px;
+      padding:12px;
+      white-space:pre-wrap;
+      word-break: break-word;
+      margin:0;
+    }
+
+    /* Your "thumb" fix: ensures list images are not huge */
+    img.thumb{
+      width: 100%;
+      height: 190px;
+      object-fit: cover;
+      background:#fff;
+    }
+
+    /* If you still use a plain .card somewhere, Bootstrap already styles it */
+    .muted { color:#6c757d; }
   </style>
 </head>
-<body>
-  <div class="topnav">
-    <a href="{{ url_for('index') }}">Ads</a>
-    <a href="{{ url_for('profiles_page') }}">Profiles</a>
-    <a href="{{ url_for('run_page') }}">Run</a>
+
+<body class="bg-light">
+  <div class="container page-wrap py-3">
+
+    <nav class="navbar navbar-expand-lg bg-white border rounded-3 px-3 mb-3">
+      <a class="navbar-brand fw-semibold" href="{{ url_for('index') }}">AgentScraper</a>
+      <div class="ms-auto d-flex gap-2">
+        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('index') }}">Ads</a>
+        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('profiles_page') }}">Profiles</a>
+        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('run_page') }}">Run</a>
+      </div>
+    </nav>
+
+    {% block content %}{% endblock %}
+
   </div>
-  {% block content %}{% endblock %}
+
+  <!-- Bootstrap JS (for accordion/collapse/etc.) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

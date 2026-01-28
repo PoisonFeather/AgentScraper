@@ -1,55 +1,158 @@
 {% extends "base.html" %}
 {% block content %}
-<form method="get" style="margin-bottom:12px">
-  <label>Profile</label>
-  <select name="profile_id">
-    <option value="">(all)</option>
-    {% for p in profiles %}
-      <option value="{{ p.id }}" {% if selected_profile_id == p.id %}selected{% endif %}>
-        {{ p.name }}
-      </option>
-    {% endfor %}
-  </select>
 
-  <label style="margin-left:12px">Min score</label>
-  <input name="min_score" value="{{ min_score if min_score is not none else '' }}" style="width:80px">
+<style>
+  .filters-bar{
+    background:#f8f9fa;
+    border:1px solid rgba(0,0,0,.06);
+  }
 
-  <button type="submit">Apply</button>
+  .ad-card-img{
+    height: 190px;          /* <= cap height on list */
+    width: 100%;
+    object-fit: cover;      /* look nice in cards */
+    background: #fff;
+  }
+
+  .line-clamp-2{
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .tiny{
+    font-size:.85rem;
+  }
+
+  .pill{
+    display:inline-flex;
+    align-items:center;
+    gap:.35rem;
+    padding:.18rem .55rem;
+    border-radius:999px;
+    font-size:.78rem;
+    background:rgba(0,0,0,.04);
+    border:1px solid rgba(0,0,0,.06);
+  }
+
+  .muted{
+    color:#6c757d;
+  }
+</style>
+
+<form method="get" class="filters-bar rounded p-2 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-4">
+      <label class="form-label mb-1">Profile</label>
+      <select class="form-select form-select-sm" name="profile_id">
+        <option value="">(all)</option>
+        {% for p in profiles %}
+          <option value="{{ p.id }}" {% if selected_profile_id == p.id %}selected{% endif %}>
+            {{ p.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label mb-1">Min score</label>
+      <input class="form-control form-control-sm" name="min_score"
+             value="{{ min_score if min_score is not none else '' }}" placeholder="ex: 6.5">
+    </div>
+
+    <div class="col-6 col-md-6 d-flex gap-2">
+      <button class="btn btn-sm btn-dark" type="submit">Apply</button>
+      <a class="btn btn-sm btn-success" href="{{ url_for('profile_wizard_start') }}">+ Wizard profil</a>
+    </div>
+  </div>
 </form>
+
 <div class="row g-3">
   {% for ad in ads %}
   <div class="col-12 col-md-6 col-lg-4">
     <div class="card h-100 shadow-sm">
+
       {% if ad.image_url %}
-        <img src="{{ ad.image_url }}" class="card-img-top thumb" alt="img">
+        <img src="{{ ad.image_url }}" class="ad-card-img card-img-top" alt="img">
+      {% else %}
+        <div class="ad-card-img d-flex align-items-center justify-content-center muted">
+          (fără imagine)
+        </div>
       {% endif %}
+
       <div class="card-body">
-        <div class="d-flex justify-content-between">
-          <span class="badge bg-dark">score {{ "%.1f"|format(ad.score or 0) }}</span>
-          <span class="badge bg-secondary">{{ ad.price_ron or "?" }} RON</span>
-        </div>
-        <h6 class="mt-2">{{ ad.title or "—" }}</h6>
-        <div class="text-muted small">{{ ad.location_text or "—" }}</div>
-        <div class="small mt-1">
-          {% if ad.distance_km is not none %}
-            dist: {{ "%.1f"|format(ad.distance_km) }} km de Cluj
-          {% else %}
-            dist: —
-          {% endif %}
-        </div>
-        <div class="mt-2">
-          <div class="fw-semibold">{{ ad.verdict or "" }}</div>
-          <div class="small text-muted">
-            reparații: {{ ad.repair_estimate_low or 0 }}–{{ ad.repair_estimate_high or 0 }} RON
+
+        <!-- top badges -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div class="d-flex flex-wrap gap-2">
+            <span class="pill"><strong>Score</strong> {{ "%.1f"|format(ad.score or 0) }}</span>
+            <span class="pill"><strong>Preț</strong> {{ ad.price_ron or "?" }} RON</span>
+            {% if ad.distance_km is not none %}
+              <span class="pill"><strong>Dist</strong> {{ "%.1f"|format(ad.distance_km) }} km</span>
+            {% endif %}
           </div>
         </div>
+
+        <!-- title -->
+        <h6 class="mt-2 mb-1 line-clamp-2">{{ ad.title or "—" }}</h6>
+        <div class="text-muted tiny">{{ ad.location_text or "—" }}</div>
+
+        <!-- verdict -->
+        {% if ad.verdict %}
+          <div class="mt-2 fw-semibold">{{ ad.verdict }}</div>
+        {% endif %}
+
+        <!-- compact info grid -->
+        <div class="mt-2 tiny">
+          <div class="d-flex justify-content-between">
+            <span class="muted">Reparații</span>
+            <span>{{ ad.repair_estimate_low or 0 }}–{{ ad.repair_estimate_high or 0 }} RON</span>
+          </div>
+
+          {% if ad.profit_low is not none or ad.profit_high is not none %}
+          <div class="d-flex justify-content-between">
+            <span class="muted">Profit</span>
+            <span>{{ ad.profit_low }}–{{ ad.profit_high }} RON</span>
+          </div>
+          {% endif %}
+
+          {% if ad.parts_suspected %}
+          <div class="mt-2">
+            <div class="muted">Piese suspecte</div>
+            <div class="line-clamp-2">{{ ad.parts_suspected }}</div>
+          </div>
+          {% endif %}
+
+          {% if ad.signals_positive %}
+          <div class="mt-2">
+            <div class="muted">Semnale pozitive</div>
+            <ul class="mb-0 ps-3">
+              {% for s in (ad.signals_positive[:3] if ad.signals_positive is sequence else []) %}
+                <li>{{ s }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if ad.reasoning %}
+          <div class="mt-2">
+            <div class="muted">Pe scurt</div>
+            <div class="line-clamp-2">{{ ad.reasoning }}</div>
+          </div>
+          {% endif %}
+        </div>
+
       </div>
+
       <div class="card-footer bg-white d-flex justify-content-between">
         <a class="btn btn-sm btn-outline-primary" href="/ad/{{ ad.id }}">Detalii</a>
         <a class="btn btn-sm btn-outline-dark" href="{{ ad.url }}" target="_blank" rel="noreferrer">OLX</a>
       </div>
+
     </div>
   </div>
   {% endfor %}
 </div>
+
 {% endblock %}

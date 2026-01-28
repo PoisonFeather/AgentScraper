@@ -4,14 +4,14 @@ import re
 from analyze import ollama_generate
 
 _DEFAULT_QUESTIONS = [
-    {"id": "q1", "q": "Ce tip de produse vrei (ex: TV, telefoane, laptopuri, cabane)?", "type": "text"},
-    {"id": "q2", "q": "Care e bugetul maxim (RON) pe anunț?", "type": "text"},
-    {"id": "q3", "q": "Care e distanța maximă față de Cluj (km) sau 'oricât'?", "type": "text"},
-    {"id": "q4", "q": "Cât de greu accepți să fie repararea (ușor / mediu / greu)?", "type": "text"},
-    {"id": "q5", "q": "Vrei doar produse 'functionale parțial' (ex: pornește) sau accepți și moarte complet?", "type": "text"},
-    {"id": "q6", "q": "Ce defecte sunt 'hard NO' (ex: ecran spart, lipsă piese, apă, ars)?", "type": "text"},
-    {"id": "q7", "q": "Ce semnale sunt 'hard YES' (ex: backlight ok, sunet ok, doar LED strip)?", "type": "text"},
-    {"id": "q8", "q": "Ce profit minim vrei estimat (RON) sau procent?", "type": "text"},
+    {"id": "q1", "q": "Ce vrei să găsească agentul? (ex: cabane de închiriat, TV-uri defecte reparabile, teren intravilan etc.)", "type": "text"},
+    {"id": "q2", "q": "Care e scopul tău? (cumperi / închiriezi / cauți servicii / cauți pentru piese / revânzare)", "type": "text"},
+    {"id": "q3", "q": "Care e bugetul maxim (RON) pe anunț? (sau gol)", "type": "text"},
+    {"id": "q4", "q": "În ce zone/orașe te interesează? (sau 'oricunde')", "type": "text"},
+    {"id": "q5", "q": "Ce condiție/stare vrei? (nou / folosit / defect / orice)", "type": "text"},
+    {"id": "q6", "q": "Ce cuvinte/semnale sunt obligatorii? (separate prin virgulă / gol)", "type": "text"},
+    {"id": "q7", "q": "Ce cuvinte/semnale sunt interzise? (separate prin virgulă / gol)", "type": "text"},
+    {"id": "q8", "q": "Detalii extra utile (brand, model, dimensiune, facilități etc.) (sau gol)", "type": "text"},
 ]
 
 def _strip_fences(s: str) -> str:
@@ -51,24 +51,40 @@ def _safe_json_loads(resp: str) -> dict | None:
 
 def wizard_generate_questions(model: str, goal: str):
     prompt = f"""
-Ești un "profile builder" pentru un agent care caută anunțuri pe OLX.
+    Ești un expert în căutări OLX și construiești un profil de căutare pentru un scraper.
 
-OBIECTIV (goal): {goal}
+    GOAL: {goal}
 
-Returnează STRICT un JSON valid (fără text în plus), cu schema:
+    ANSWERS (id->răspuns):
+    {json.dumps(answers, ensure_ascii=False, indent=2)}
 
-{{
-  "questions": [
-    {{"id":"q1","q":"...","type":"text|number|choice","choices":["..."]}},
-    ...
-  ]
-}}
+    Returnează STRICT JSON valid (fără text extra) cu schema:
 
-Reguli:
-- Pune între 6 și 10 întrebări.
-- Întrebările trebuie să clarifice un "rule set" pentru filtrare + scoring (buget, distanță, defecte acceptate, profit, dificultate reparație etc).
-- Fără explicații. Doar JSON.
-""".strip()
+    {{
+      "name": "...",
+      "notes": "...",
+      "queries": ["..."],
+      "hard_yes": ["..."],
+      "hard_no": ["..."],
+      "questions": ["..."]
+    }}
+
+    Reguli critice:
+    - queries: 4-10 expresii de căutare OLX, scurte, orientate pe ce scriu oamenii în anunțuri.
+      * Include variante cu și fără diacritice (ex: "inchiriere" și "închiriere").
+      * Include sinonime uzuale (ex: "cabana/cabană/chalet/pensiune", "TV/televizor", "defect/stricat/nu porneste").
+      * Include forme "de inchiriat", "inchiriez", "ofer spre inchiriere", "pentru piese", "defect", "nu porneste" când se potrivesc.
+    - hard_yes: 8-25 termeni/expresii care cresc scorul (semnale puternice din titlu/descriere).
+    - hard_no: 8-25 termeni/expresii care scad scorul sau exclud (capcane, alt tip de anunț, stare nedorită).
+    - questions: 2-6 întrebări doar dacă lipsesc constrângeri importante pentru a căuta bine.
+
+    Foarte important:
+    - Nu inventa lucruri din aer. Folosește GOAL + ANSWERS.
+    - Dacă GOAL e despre închiriere: pune termeni de închiriere + exclude vânzare.
+    - Dacă GOAL e despre reparație/piese: pune termeni de defect + exclude "perfect funcțional"/"nou".
+
+    Doar JSON.
+    """.strip()
 
     resp = ollama_generate(model, prompt, label="WIZARD_Q")
     data = _safe_json_loads(resp)
