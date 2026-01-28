@@ -142,19 +142,52 @@ def extract_title_desc_location_price(html: str):
 def extract_location_from_html(html: str):
     soup = BeautifulSoup(html, "html.parser")
 
-    # Cazul modern OLX: locația e lângă distance-field
+    # 1) Cea mai stabilă zonă: map-aside-section (Localitate)
+    box = soup.select_one("[data-testid='map-aside-section']")
+    if box:
+        # Prefer "Bacau" (p.css-3cz5o2)
+        p = box.select_one("p.css-3cz5o2")
+        if p:
+            txt = p.get_text(" ", strip=True)
+            if txt:
+                return txt
+
+        # Fallback: "Bacau," (p.css-9pna1a)
+        p = box.select_one("p.css-9pna1a")
+        if p:
+            txt = p.get_text(" ", strip=True).strip().rstrip(",")
+            if txt:
+                return txt
+
+        # Fallback: imaginea staticmap are alt="Bacau"
+        img = box.select_one("img[alt]")
+        if img and img.get("alt"):
+            return img["alt"].strip()
+
+    # 2) Fallback generic: pe lângă distance-field (dacă nu există map-aside)
     dist = soup.select_one("[data-testid='distance-field']")
     if dist:
-        parent = dist.find_parent()
-        if parent:
-            # căutăm un <p> care NU conține "km"
-            for p in parent.find_all("p"):
-                txt = p.get_text(strip=True)
-                if txt and "km" not in txt.lower() and "anunț" not in txt.lower():
+        container = dist.find_parent("section") or dist.find_parent("div")
+        if container:
+            # întâi încearcă p-urile “cunoscute”
+            p = container.select_one("p.css-3cz5o2") or container.select_one("p.css-9pna1a")
+            if p:
+                txt = p.get_text(" ", strip=True).strip().rstrip(",")
+                if txt:
                     return txt
 
-    return None
+            # ultim fallback: caută un <p> fără "km" și fără "Localitate"
+            for p in container.find_all("p"):
+                txt = p.get_text(" ", strip=True)
+                low = txt.lower()
+                if not txt:
+                    continue
+                if "km" in low or "localitate" in low or "anunț" in low:
+                    continue
+                # scoate virgula finală
+                return txt.strip().rstrip(",")
 
+    return None
 def scrape(query: str, model: str, max_pages: int | None = None):
     init_db()
     max_pages = max_pages or settings.MAX_PAGES
@@ -273,15 +306,34 @@ def scrape(query: str, model: str, max_pages: int | None = None):
                         kv("error", minimal["judge_error"])
 
                     # salvezi minimal mereu
+                    from datetime import timezone
+
                     ad = {
-                        # ... existing fields
+                        "url": url,
+                        "title": title or "",
+                        "description": desc or "",
+                        "location_text": loc or "",
+                        "image_url": img or "",
+                        "price_ron": int(price) if price is not None else None,
+                        "distance_km": float(dist) if dist is not None else None,
+                        "lat": float(lat) if lat is not None else None,
+                        "lon": float(lon) if lon is not None else None,
+                        "scraped_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    ad.update({
                         "score": float(minimal.get("score", 5.0)),
                         "verdict": minimal.get("verdict", ""),
                         "repair_estimate_low": int(minimal.get("repair_estimate_low", 0) or 0),
                         "repair_estimate_high": int(minimal.get("repair_estimate_high", 0) or 0),
                         "parts_suspected": minimal.get("parts_suspected", ""),
                         "reasoning": minimal.get("reasoning_short", ""),
-                    }
+                    })
+
+                    # dacă vrei să vezi rapid când a fost fallback
+                    if minimal.get("reasoning_short", "").startswith("Fallback"):
+                        ad["parse_ok"] = 0
+                    else:
+                        ad["parse_ok"] = 1
 
                     # dacă avem verbose, îl serializăm în câmpuri extra
                     if verbose:
@@ -295,6 +347,7 @@ def scrape(query: str, model: str, max_pages: int | None = None):
                         ad["profit_low"] = int(verbose.get("profit_low", 0) or 0)
                         ad["profit_high"] = int(verbose.get("profit_high", 0) or 0)
                         ad["notes"] = verbose.get("notes", "")
+                        ad["likely_fix"] = minimal.get("likely_fix", minimal.get("parts_suspected", ""))
                     else:
                         ad["confidence"] = None
                         ad["signals_positive"] = None
@@ -306,6 +359,7 @@ def scrape(query: str, model: str, max_pages: int | None = None):
                         ad["profit_low"] = None
                         ad["profit_high"] = None
                         ad["notes"] = None
+                        ad["likely_fix"] = None
                     upsert_ad(ad)
                     collected += 1
 

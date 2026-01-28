@@ -15,11 +15,12 @@ class Settings:
 
     # Scrape limits
     MAX_PAGES: int = 2
-    MAX_ADS_PER_RUN: int = 40
+    MAX_ADS_PER_RUN: int = 1
     MIN_SECONDS_BETWEEN_PAGES: float = 1.2
 
     # Distance reference (Cluj-Napoca)
     CLUJ_LAT: float = 46.7712
     CLUJ_LON: float = 23.6236
+
 
 settings = Settings()
