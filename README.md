@@ -65,62 +65,62 @@ Configurare implicită:
 - pip install playwright beautifulsoup4 requests
 - playwright install
 
-▶️ Rulare
-Rulare standard
-python scrape.py --model qwen2.5:7b --pages 5
-Rulare cu logging verbose în terminal
-AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 \
-python scrape.py --model qwen2.5:7b --pages 5
-Debug complet (prompt + raw LLM output)
-AGENT_LOG_PROMPT=1 AGENT_LOG_RAW=1 AGENT_LOG_PARSE=1 \
-AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 \
-python scrape.py --model qwen2.5:7b --pages 1
-📊 Exemplu output în terminal (verbose)
-===== AD FOUND =====
-title: TV Samsung 65" – pornește, bandă LED defectă
-price_ron: 950
-location: București Sector 5
+## ▶️ Rulare
+-Rulare standard
+-python scrape.py --model qwen2.5:7b --pages 5
+-Rulare cu logging verbose în terminal
+-AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 \
+-python scrape.py --model qwen2.5:7b --pages 5
+-Debug complet (prompt + raw LLM output)
+-AGENT_LOG_PROMPT=1 AGENT_LOG_RAW=1 AGENT_LOG_PARSE=1 \
+-AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 \
+-python scrape.py --model qwen2.5:7b --pages 1
+-📊 Exemplu output în terminal (verbose)
+-===== AD FOUND =====
+-title: TV Samsung 65" – pornește, bandă LED defectă
+-price_ron: 950
+-location: București Sector 5
 
 
-===== KEYWORD SCORE =====
-keyword_bonus: +1.5
+-===== KEYWORD SCORE =====
+-keyword_bonus: +1.5
 
 
-===== MINIMAL RESULT =====
-score: 7.2
-likely_fix: backlight
-repair_estimate: 200–350 RON
+-===== MINIMAL RESULT =====
+-score: 7.2
+-likely_fix: backlight
+-repair_estimate: 200–350 RON
 
 
-===== VERBOSE SUMMARY =====
-confidence: 0.82
-resale: 1600–2000 RON
-profit: 450–700 RON
-🛡️ Stabilitate & Fail-safe
+-===== VERBOSE SUMMARY =====
+-confidence: 0.82
+-resale: 1600–2000 RON
+-profit: 450–700 RON
+-🛡️ Stabilitate & Fail-safe
 
-Dacă Ollama returnează 500 / OOM / timeout:
+-Dacă Ollama returnează 500 / OOM / timeout:
 
-analiza verbose este ignorată
+-analiza verbose este ignorată
 
-anunțul rămâne analizat minimal
+-anunțul rămâne analizat minimal
 
-scraperul NU se oprește
+-scraperul NU se oprește
 
-Acest lucru permite rulări lungi (zeci/sute de anunțuri).
+-Acest lucru permite rulări lungi (zeci/sute de anunțuri).
 
-🗃️ Baza de date
+-🗃️ Baza de date
 
-SQLite (data/olx.db)
+-SQLite (data/olx.db)
 
-JSON-urile (signals, repair_items etc.) sunt salvate ca TEXT
+-JSON-urile (signals, repair_items etc.) sunt salvate ca TEXT
 
-Structura este gândită pentru:
+-Structura este gândită pentru:
 
-dashboard Flask
+-dashboard Flask
 
-export CSV
+-export CSV
 
-filtrare ulterioară
+-filtrare ulterioară
 
 🔮 Idei de extindere
 
