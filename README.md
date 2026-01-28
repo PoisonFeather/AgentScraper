@@ -1,147 +1,147 @@
 # 🧠 AgentScraper – OLX AI Deal Finder
 
-AgentScraper este un **agent AI automat** care caută anunțuri OLX (ex: televizoare Samsung defecte), le analizează inteligent și estimează **șansele de reparare, costurile și profitul potențial**, folosind modele LLM rulate local prin **Ollama**.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
+![Ollama](https://img.shields.io/badge/AI-Ollama%20Local-orange?logo=ollama&logoColor=white)
+![Playwright](https://img.shields.io/badge/Scraper-Playwright-green?logo=playwright&logoColor=white)
 
-Proiectul este gândit pentru:
-- electroniști / service TV
-- flipping (cumpărat – reparat – revândut)
-- analiză rapidă a anunțurilor „merită / nu merită”
+**AgentScraper** is an automated AI agent that hunts for deals on OLX (e.g., defective Samsung TVs), analyzes them intelligently, and estimates **repair chances, component costs, and potential profit margins** using local LLMs via **Ollama**.
 
----
-
-## 🚀 Funcționalități
-
-- 🔎 Scraping OLX automat (Playwright)
-- 🤖 Analiză AI locală (fără cloud, fără API-uri externe)
-- 🧮 Scor inteligent (0–10) pentru fiecare anunț
-- 🛠️ Estimare cost reparație (T-CON, backlight, mainboard, panel)
-- 💰 Estimare profit (preț + reparație vs. valoare de revânzare)
-- 📍 Distanță reală extrasă direct din OLX (ex: „la 450km de tine”)
-- 🧠 Verbose mode: vezi în terminal exact ce analizează modelul
-- 🗃️ Persistență în SQLite
-- 🛡️ Fail-safe: dacă AI-ul pică (OOM / timeout), scraperul continuă
+This project is designed for:
+- 🔌 Electronics technicians / TV repair shops
+- 🔄 Flippers (Buy – Repair – Resell)
+- 📊 Rapid "Deal vs. No Deal" market analysis
 
 ---
 
-## 🧩 Arhitectură
-- AgentScraper/ 
-- ├── scrape.py # scraper + orchestrare
-- ├── analyze.py # logică AI (minimal + verbose)
-- ├── db.py # SQLite (persistență)
-- ├── geo.py # geocoding / distanță
-- ├── log.py # logging verbose în terminal
-- ├── config.py # setări globale
-- ├── queries.py # liste de căutări OLX
-- ├── data/olx.db # baza de date
-- └── README.md
+## 🚀 Key Features
+
+- **🔎 Automated Scraping:** powered by Playwright to navigate OLX listings.
+- **🤖 100% Local AI Analysis:** No cloud APIs, no subscription costs. Privacy-focused.
+- **🧮 Smart Scoring:** Assigns a 0–10 profitability score to each listing.
+- **🛠️ Repair Estimation:** Identifies likely failures (T-CON, backlight, mainboard, panel) based on symptoms.
+- **💰 Profit Calculator:** Calculates `(Est. Resale Price) - (Ask Price + Repair Cost)`.
+- **📍 Geolocation Awareness:** Extracts real distances (e.g., "450km from you") to factor in transport.
+- **🛡️ Resilience:** Includes a fail-safe mode—if the AI hangs (OOM/Timeout), the scraper continues without crashing.
+- **🗃️ SQLite Persistence:** Saves all data for historical analysis and dashboarding.
 
 ---
 
-## 🧠 Modele AI suportate
+## 🧩 Architecture
 
-Rulează **100% local** prin Ollama.
-
-Testat cu:
-- `qwen2.5:7b` – rapid, stabil (recomandat ca model principal)
-- `gemma3:latest` – mai analitic, dar mai sensibil la memorie (opțional ca judge)
-
-Configurare implicită:
-- **Minimal analysis** → `qwen2.5:7b`
-- **Verbose judge (score ≥ 5)** → `gemma3:latest`  
-  (cu fallback automat dacă pică)
-
----
-
-## ⚙️ Cerințe
-
-- Python **3.10+**
-- Ollama instalat și pornit
-- Modele descărcate:
-  ```bash
-  ollama pull qwen2.5:7b
-  ollama pull gemma3
-  
-## Dependințe Python
-- pip install playwright beautifulsoup4 requests
-- playwright install
-
-## ▶️ Rulare
--Rulare standard
--python scrape.py --model qwen2.5:7b --pages 5
--Rulare cu logging verbose în terminal
--AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 \
--python scrape.py --model qwen2.5:7b --pages 5
--Debug complet (prompt + raw LLM output)
--AGENT_LOG_PROMPT=1 AGENT_LOG_RAW=1 AGENT_LOG_PARSE=1 \
--AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 \
--python scrape.py --model qwen2.5:7b --pages 1
--📊 Exemplu output în terminal (verbose)
--===== AD FOUND =====
--title: TV Samsung 65" – pornește, bandă LED defectă
--price_ron: 950
--location: București Sector 5
+```text
+AgentScraper/ 
+├── scrape.py       # Orchestrator & Scraper logic
+├── analyze.py      # AI Logic (Minimal & Verbose/Judge modes)
+├── db.py           # Database handling (SQLite)
+├── geo.py          # Geocoding & Distance calculation
+├── log.py          # Advanced terminal logging
+├── config.py       # Global settings
+├── queries.py      # List of OLX search queries
+├── data/
+│   └── olx.db      # Main database
+└── README.md
 
 
--===== KEYWORD SCORE =====
--keyword_bonus: +1.5
+🧠 AI Models
+The agent runs locally via Ollama. It utilizes a two-tier analysis system:
 
+Minimal Analysis (The Scanner):
 
--===== MINIMAL RESULT =====
--score: 7.2
--likely_fix: backlight
--repair_estimate: 200–350 RON
+Model: qwen2.5:7b (Recommended)
 
+Role: Fast, stable, initial filtering.
 
--===== VERBOSE SUMMARY =====
--confidence: 0.82
--resale: 1600–2000 RON
--profit: 450–700 RON
--🛡️ Stabilitate & Fail-safe
+Verbose Judge (The Expert):
 
--Dacă Ollama returnează 500 / OOM / timeout:
+Model: gemma3:latest (Optional)
 
--analiza verbose este ignorată
+Role: Deep analysis for high-potential items (Score ≥ 5).
 
--anunțul rămâne analizat minimal
+Note: Includes automatic fallback to Qwen if Gemma hits memory limits.
 
--scraperul NU se oprește
+⚙️ Installation
+1. Prerequisites
+Python 3.10+
 
--Acest lucru permite rulări lungi (zeci/sute de anunțuri).
+Ollama installed and running (Download here)
 
--🗃️ Baza de date
+2. Pull AI Models
+Open your terminal and download the required weights:
 
--SQLite (data/olx.db)
+Bash
+ollama pull qwen2.5:7b
+ollama pull gemma3
+3. Setup Project
+Bash
+# Clone the repository
+git clone [https://github.com/PoisonFeather/AgentScraper.git](https://github.com/PoisonFeather/AgentScraper.git)
+cd AgentScraper
 
--JSON-urile (signals, repair_items etc.) sunt salvate ca TEXT
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 
--Structura este gândită pentru:
+# Install dependencies
+pip install -r requirements.txt
 
--dashboard Flask
+# Install Playwright browsers
+playwright install
+▶️ Usage
+Standard Run
+Scrapes the first 5 pages using the Qwen model.
 
--export CSV
+Bash
+python scrape.py --model qwen2.5:7b --pages 5
+Verbose / Debug Modes
+You can control the output using environment variables:
 
--filtrare ulterioară
+1. Detailed Terminal Logging: Shows the AI's reasoning summary in real-time.
 
-🔮 Idei de extindere
+Bash
+AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 python scrape.py --model qwen2.5:7b --pages 5
+2. Full Debug (Raw Prompts & Outputs): Use this to debug prompt engineering or LLM parsing errors.
 
-📊 Dashboard Flask / React
+Bash
+AGENT_LOG_PROMPT=1 AGENT_LOG_RAW=1 AGENT_LOG_PARSE=1 \
+AGENT_LOG_DESC=1 AGENT_LOG_VERBOSE_SUMMARY=1 \
+python scrape.py --model qwen2.5:7b --pages 1
+📊 Example Output
+When running in verbose mode, the terminal will display:
 
-🔔 Notificări (Telegram / Discord) la „deal bun”
+Plaintext
+===== AD FOUND =====
+Title:       TV Samsung 65" – powers on, no image (blue screen)
+Price:       950 RON
+Location:    Bucharest Sector 5
 
-📉 Penalizare scor după distanță
+===== MINIMAL RESULT =====
+Score:           7.2 / 10
+Likely Fix:      Backlight / LEDs
+Repair Est:      200–350 RON
 
-♻️ Cache pe URL (nu reanalizezi același anunț)
+===== VERBOSE SUMMARY =====
+Confidence:      82%
+Est. Resale:     1600–2000 RON
+Net Profit:      450–700 RON
+Recommendation:  BUY
+🔮 Roadmap
+[ ] Web Dashboard: Flask/React interface to view deals visually.
 
-🧠 Fine-tuning reguli per brand / model
+[ ] Notifications: Telegram/Discord alerts for high-score items.
+
+[ ] Distance Penalty: Automatically lower the score if the item is >100km away.
+
+[ ] Smart Cache: Prevent re-analyzing the same URL twice.
+
+[ ] Fine-tuning: Custom system prompts for specific brands (LG vs Samsung).
 
 ⚠️ Disclaimer
+All estimates are heuristics based on:
 
-Estimările sunt heuristice, bazate pe:
+The seller's description (which may be inaccurate).
 
-descrierea vânzătorului
+Common failure patterns known to the LLM.
 
-pattern-uri comune de defecte
+General market data.
 
-experiență generală service
-
-Nu înlocuiește verificarea fizică a produsului.
+This tool does not replace physical inspection. The author is not responsible for financial losses incurred from flipping decisions made based on this software.
