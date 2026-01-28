@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  {% for ad in ads %}
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card h-100 shadow-sm">
+      {% if ad.image_url %}
+        <img src="{{ ad.image_url }}" class="card-img-top thumb" alt="img">
+      {% endif %}
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <span class="badge bg-dark">score {{ "%.1f"|format(ad.score or 0) }}</span>
+          <span class="badge bg-secondary">{{ ad.price_ron or "?" }} RON</span>
+        </div>
+        <h6 class="mt-2">{{ ad.title or "—" }}</h6>
+        <div class="text-muted small">{{ ad.location_text or "—" }}</div>
+        <div class="small mt-1">
+          {% if ad.distance_km is not none %}
+            dist: {{ "%.1f"|format(ad.distance_km) }} km de Cluj
+          {% else %}
+            dist: —
+          {% endif %}
+        </div>
+        <div class="mt-2">
+          <div class="fw-semibold">{{ ad.verdict or "" }}</div>
+          <div class="small text-muted">
+            reparații: {{ ad.repair_estimate_low or 0 }}–{{ ad.repair_estimate_high or 0 }} RON
+          </div>
+        </div>
+      </div>
+      <div class="card-footer bg-white d-flex justify-content-between">
+        <a class="btn btn-sm btn-outline-primary" href="/ad/{{ ad.id }}">Detalii</a>
+        <a class="btn btn-sm btn-outline-dark" href="{{ ad.url }}" target="_blank" rel="noreferrer">OLX</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

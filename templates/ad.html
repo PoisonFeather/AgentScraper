@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not ad %}
+  <div class="alert alert-warning">Anunț inexistent.</div>
+{% else %}
+  <div class="row g-3">
+    <div class="col-md-6">
+      {% if ad.image_url %}
+        <img src="{{ ad.image_url }}" class="img-fluid rounded shadow-sm" alt="img">
+      {% endif %}
+    </div>
+    <div class="col-md-6">
+      <h5>{{ ad.title }}</h5>
+      <div class="d-flex gap-2 mb-2">
+        <span class="badge bg-dark">score {{ "%.1f"|format(ad.score or 0) }}</span>
+        <span class="badge bg-secondary">{{ ad.price_ron or "?" }} RON</span>
+      </div>
+
+      <div class="text-muted">{{ ad.location_text or "—" }}</div>
+      <div class="mt-1">
+        {% if ad.distance_km is not none %}
+          dist: {{ "%.1f"|format(ad.distance_km) }} km de Cluj
+        {% endif %}
+      </div>
+
+      <hr>
+      <div class="fw-semibold">{{ ad.verdict }}</div>
+      {% if ad.notes %}
+      <hr>
+  <h6>Diagnostic (verbose)</h6>
+  <div class="small text-muted">Confidence: {{ ad.confidence }}</div>
+  <p class="mt-2">{{ ad.notes }}</p>
+
+  <h6>Semnale</h6>
+  <pre class="p-3 bg-white rounded shadow-sm">{{ ad.signals_positive }}</pre>
+  <pre class="p-3 bg-white rounded shadow-sm">{{ ad.signals_negative }}</pre>
+
+  <h6>Plan rapid de test</h6>
+  <pre class="p-3 bg-white rounded shadow-sm">{{ ad.quick_tests }}</pre>
+
+  <h6>Cost breakdown</h6>
+  <pre class="p-3 bg-white rounded shadow-sm">{{ ad.repair_items }}</pre>
+
+  <h6>Profit estimat</h6>
+  <div class="text-muted">
+    resale: {{ ad.resale_value_low }}–{{ ad.resale_value_high }} RON,
+    profit: {{ ad.profit_low }}–{{ ad.profit_high }} RON
+  </div>
+{% endif %}
+      <div class="text-muted">Piese suspecte: {{ ad.parts_suspected }}</div>
+      <div class="text-muted">Reparații estimate: {{ ad.repair_estimate_low }}–{{ ad.repair_estimate_high }} RON</div>
+      <p class="mt-3">{{ ad.reasoning }}</p>
+
+      <a class="btn btn-dark" href="{{ ad.url }}" target="_blank" rel="noreferrer">Deschide OLX</a>
+    </div>
+
+    <div class="col-12">
+      <h6>Descriere</h6>
+      <pre class="p-3 bg-white rounded shadow-sm">{{ ad.description or "" }}</pre>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
