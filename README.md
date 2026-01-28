@@ -24,16 +24,16 @@ Proiectul este gândit pentru:
 ---
 
 ## 🧩 Arhitectură
-AgentScraper/
-├── scrape.py # scraper + orchestrare
-├── analyze.py # logică AI (minimal + verbose)
-├── db.py # SQLite (persistență)
-├── geo.py # geocoding / distanță
-├── log.py # logging verbose în terminal
-├── config.py # setări globale
-├── queries.py # liste de căutări OLX
-├── data/olx.db # baza de date
-└── README.md
+AgentScraper/ \n
+├── scrape.py # scraper + orchestrare\n
+├── analyze.py # logică AI (minimal + verbose)\n
+├── db.py # SQLite (persistență)\n
+├── geo.py # geocoding / distanță\n
+├── log.py # logging verbose în terminal\n
+├── config.py # setări globale\n
+├── queries.py # liste de căutări OLX\n
+├── data/olx.db # baza de date\n
+└── README.md\n
 
 ---
 
