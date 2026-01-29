@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Run</h1>
+
+<form method="post">
+  <p>
+    <label>Profile</label><br>
+    <select name="profile_id" required>
+      {% for p in profiles %}
+        <option value="{{ p.id }}">{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </p>
+
+  <p>
+    <label>Model</label><br>
+    <input name="model" value="{{ default_model }}" style="width:320px">
+    <span class="muted">ex: qwen2.5:7b / gemma3:latest</span>
+  </p>
+
+  <p>
+    <label>Pages</label><br>
+    <input name="pages" type="number" min="1" max="50" value="2">
+  </p>
+
+  <p>
+    <label>Max ads</label><br>
+    <input name="max_ads" type="number" min="1" max="200" value="10">
+  </p>
+
+  <button type="submit">Start run</button>
+</form>
+{% endblock %}

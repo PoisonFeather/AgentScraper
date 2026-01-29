@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Profile Wizard</h1>
+
+<form method="post">
+  <p>
+    <label>Ce vrei să cauți?</label><br>
+    <input name="goal" style="width:100%" placeholder="ex: televizoare stricate reparabile pentru profit" required>
+  </p>
+
+  <p>
+    <label>Model Ollama</label><br>
+    <input name="model" value="{{ default_model }}" style="width:320px">
+  </p>
+
+  <button type="submit">Generează întrebările</button>
+</form>
+{% endblock %}

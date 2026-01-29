@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="post">
+  <div class="row">
+    <div class="col">
+      <label>Name</label><br>
+      <input name="name" value="{{ f.name }}" style="width:100%" required>
+    </div>
+    <div class="col">
+      <label>Notes / Objective</label><br>
+      <input name="notes" value="{{ f.notes }}" style="width:100%">
+    </div>
+  </div>
+
+  <p><label>Queries (one per line)</label><br>
+  <textarea name="queries">{{ f.queries_txt }}</textarea></p>
+
+  <div class="row">
+    <div class="col">
+      <label>Hard YES keywords (one per line)</label><br>
+      <textarea name="yes">{{ f.yes_txt }}</textarea>
+    </div>
+    <div class="col">
+      <label>Hard NO keywords (one per line)</label><br>
+      <textarea name="no">{{ f.no_txt }}</textarea>
+    </div>
+  </div>
+
+  <p><label>Questions if unclear (one per line)</label><br>
+  <textarea name="questions">{{ f.questions_txt }}</textarea></p>
+
+  <p>
+    <button type="submit">Save</button>
+    <a href="{{ url_for('profiles_page') }}">Cancel</a>
+  </p>
+</form>
+{% endblock %}

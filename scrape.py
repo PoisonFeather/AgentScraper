@@ -24,15 +24,20 @@ NEGATIVE_KW = [
     "jumatate ecran", "jumătate ecran", "lovit", "a cazut", "a căzut"
 ]
 
-def keyword_score(text: str) -> float:
+def keyword_score(text: str, hard_yes: list[str], hard_no: list[str]) -> float:
     t = (text or "").lower()
     score = 0.0
-    for k in POSITIVE_KW:
-        if k in t:
+
+    for k in (hard_yes or []):
+        kk = (k or "").lower().strip()
+        if kk and kk in t:
             score += 1.5
-    for k in NEGATIVE_KW:
-        if k in t:
+
+    for k in (hard_no or []):
+        kk = (k or "").lower().strip()
+        if kk and kk in t:
             score -= 4.0
+
     return score
 
 
@@ -162,7 +167,7 @@ def extract_location_from_html(html: str):
         return city or full
 
     return None
-def scrape(query: str, model: str, max_pages: int | None = None):
+def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None, max_ads: int | None = None):
     init_db()
     max_pages = max_pages or settings.MAX_PAGES
 
@@ -190,9 +195,9 @@ def scrape(query: str, model: str, max_pages: int | None = None):
                         links.append(full)
 
             for url in links:
-                if collected >= settings.MAX_ADS_PER_RUN:
+                limit_ads = max_ads or settings.MAX_ADS_PER_RUN
+                if collected >= limit_ads:
                     break
-
                 ad_page = context.new_page()
                 try:
                     ad_page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -257,7 +262,13 @@ def scrape(query: str, model: str, max_pages: int | None = None):
 
                     # ...
 
-                    kb = keyword_score((title or "") + "\n" + (desc or ""))
+                    from db import get_profile
+
+                    prof = get_profile(profile_id)
+                    hard_yes = prof.get("hard_yes", []) if prof else []
+                    hard_no = prof.get("hard_no", []) if prof else []
+
+                    kb = keyword_score((title or "") + "\n" + (desc or ""), hard_yes, hard_no)
 
 
                     section("KEYWORD SCORE")
@@ -283,6 +294,7 @@ def scrape(query: str, model: str, max_pages: int | None = None):
                     from datetime import timezone
 
                     ad = {
+                        "profile_id":profile_id,
                         "url": url,
                         "title": title or "",
                         "description": desc or "",

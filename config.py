@@ -5,6 +5,7 @@ class Settings:
     # Ollama
     OLLAMA_BASE_URL: str = "http://192.168.0.136:11434"
     DEFAULT_MODEL: str = "qwen2.5-coder:7b"
+    SECRET_KEY: str = "dev-secret-change-in-production"
 
     # OLX
     OLX_BASE: str = "https://www.olx.ro"
@@ -15,7 +16,7 @@ class Settings:
 
     # Scrape limits
     MAX_PAGES: int = 2
-    MAX_ADS_PER_RUN: int = 1
+    MAX_ADS_PER_RUN: int = 40
     MIN_SECONDS_BETWEEN_PAGES: float = 1.2
 
     # Distance reference (Cluj-Napoca)

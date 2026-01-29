@@ -9,7 +9,15 @@ def ollama_generate(model: str, prompt: str, label: str = "OLLAMA"):
         block("prompt", trunc(prompt, 2500))
 
     url = f"{settings.OLLAMA_BASE_URL}/api/generate"
-    r = requests.post(url, json={"model": model, "prompt": prompt, "stream": False}, timeout=90)
+    r = requests.post(url, json={
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0,
+            "top_p": 0.9
+        }
+    }, timeout=90)
     if r.status_code != 200:
         # păstrăm body pentru debug
         err_text = r.text[:2000] if r.text else ""
