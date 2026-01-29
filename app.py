@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, abort
 from profile_wizard import wizard_generate_questions, wizard_build_profile
 from db import insert_profile
 from config import settings
@@ -10,12 +10,11 @@ from db import (
     create_profile_from_form, update_profile_from_form, delete_profile,
     profile_to_form_defaults
 )
-from config import settings
 from scrape import scrape
 
 app = Flask(__name__)
+app.secret_key = settings.SECRET_KEY
 init_db()
-app.secret_key = "dev-secret" # TEMP, ok pentru local
 # ---- ADS ----
 
 @app.get("/")
@@ -125,11 +124,6 @@ def run_page():
         return redirect(url_for("index", profile_id=profile_id))
 
     return render_template("run.html", profiles=profiles, default_model=settings.DEFAULT_MODEL)
-from flask import session
-from profile_wizard import wizard_generate_questions, wizard_build_profile
-from db import insert_profile  # funcție nouă în db.py
-
-app.secret_key = "dev"  # pentru session
 
 @app.route("/profiles/wizard", methods=["GET", "POST"])
 def profile_wizard_start():

@@ -55,9 +55,6 @@ def wizard_generate_questions(model: str, goal: str):
 
     GOAL: {goal}
 
-    ANSWERS (id->răspuns):
-    {json.dumps(answers, ensure_ascii=False, indent=2)}
-
     Returnează STRICT JSON valid (fără text extra) cu schema:
 
     {{

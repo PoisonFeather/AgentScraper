@@ -243,9 +243,6 @@ def profile_to_form_defaults(profile_row: dict):
         "questions_txt": _list_to_lines(profile_row.get("questions", [])),
     }
 
-import sqlite3
-from datetime import datetime, timezone
-
 def insert_profile(p: dict):
     """
     Acceptă fie:
