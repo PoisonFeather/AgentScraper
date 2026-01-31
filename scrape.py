@@ -34,28 +34,33 @@ def keyword_score(text: str, hard_yes: list[str], hard_no: list[str]) -> float:
     return score
 
 def parse_profile_cfg(notes: str | None):
+    """
+    Așteaptă în notes:
+    CFG: {...json...}
+    RUBRIC:
+    ...
+    (acceptă și cazul: }RUBRIC: pe aceeași linie)
+    """
     notes = notes or ""
     cfg = {"domain": "generic"}
     rubric = ""
 
-    m = re.search(r"CFG:\s*(\{.*\})", notes, flags=re.DOTALL)
+    # ia tot ce e după "CFG:" până la "RUBRIC:" (cu sau fără newline), sau până la final
+    m = re.search(r"CFG:\s*(\{.*?\})\s*(?=RUBRIC:|$)", notes, flags=re.DOTALL)
     if m:
         raw = m.group(1).strip()
         try:
             cfg = json.loads(raw)
         except Exception:
-            cut = raw.split("\nRUBRIC:", 1)[0].strip()
-            try:
-                cfg = json.loads(cut)
-            except Exception:
-                cfg = {"domain": "generic"}
+            cfg = {"domain": "generic"}
 
-    mr = re.search(r"RUBRIC:\s*\n(.*)", notes, flags=re.DOTALL)
+    mr = re.search(r"RUBRIC:\s*(.*)$", notes, flags=re.DOTALL)
     if mr:
         rubric = mr.group(1).strip()
 
     domain = str(cfg.get("domain") or "generic").strip()
     return cfg, rubric, domain
+
 
 def parse_price_ron(text: str | None):
     if not text:
@@ -278,6 +283,82 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
 
                     cfg, rubric, domain = parse_profile_cfg(notes)
 
+                    def norm(s: str) -> str:
+                        return (s or "").lower()
+
+                    def contains_any(text: str, phrases: list[str]) -> str | None:
+                        t = norm(text)
+                        for p in phrases or []:
+                            pp = norm(p).strip()
+                            if pp and pp in t:
+                                return pp
+                        return None
+
+                    def apply_cfg_soft_filters(cfg: dict, title: str, desc: str, price: int | None,
+                                               dist_km: float | None):
+                        """
+                        - avoid: HARD (drop)
+                        - max_price/radius: soft cu toleranță, hard drop doar dacă e MULT peste
+                        - must_have: SOFT (bonus dacă apare, mic penalty dacă lipsește)
+                        """
+                        text = (title or "") + "\n" + (desc or "")
+
+                        # 1) HARD negatives (avoid)
+                        avoid_hit = contains_any(text, cfg.get("avoid") or [])
+                        if avoid_hit:
+                            return {"drop": True, "reason": f"cfg_avoid:{avoid_hit}", "bonus": 0.0}
+
+                        bonus = 0.0
+
+                        # 2) price soft/hard
+                        max_price = cfg.get("max_price_ron")
+                        try:
+                            max_price = int(max_price) if max_price is not None else None
+                        except Exception:
+                            max_price = None
+
+                        if max_price and price:
+                            # wiggle room: +15% soft, peste +35% drop (tune aici)
+                            soft = 1.15
+                            hard = 1.35
+                            if price > max_price * hard:
+                                return {"drop": True, "reason": "over_budget_hard", "bonus": 0.0}
+                            if price > max_price:
+                                # penalty gradual, max ~ -2.0
+                                ratio = (price - max_price) / max_price
+                                bonus -= min(2.0, ratio * 10.0)  # 10% peste => -1.0
+                            else:
+                                bonus += 0.4  # sub buget = mic bonus
+
+                        # 3) radius soft/hard (doar dacă ai distanță)
+                        radius = cfg.get("radius_km")
+                        try:
+                            radius = float(radius) if radius is not None else None
+                        except Exception:
+                            radius = None
+
+                        if radius and dist_km:
+                            soft = 1.20
+                            hard = 1.60
+                            if dist_km > radius * hard:
+                                return {"drop": True, "reason": "over_radius_hard", "bonus": 0.0}
+                            if dist_km > radius:
+                                ratio = (dist_km - radius) / radius
+                                bonus -= min(1.5, ratio * 5.0)  # 20% peste => -1.0
+                            else:
+                                bonus += 0.3
+
+                        # 4) must_have: SOFT
+                        must = cfg.get("must_have") or []
+                        if must:
+                            hit = contains_any(text, must)
+                            if hit:
+                                bonus += 0.8
+                            else:
+                                bonus -= 0.4  # nu omori anunțul, doar îl împingi în jos
+
+                        return {"drop": False, "reason": None, "bonus": bonus}
+
                     # 1) intent
                     intent = classify_intent(model, title or "", desc or "", stream_cb=stream_cb)
                     live_section("INTENT")
@@ -303,15 +384,25 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                     kb = keyword_score((title or "") + "\n" + (desc or ""), hard_yes, hard_no)
                     live_section("KEYWORD SCORE")
                     live_kv("keyword_bonus", kb)
+                    cfg_res = apply_cfg_soft_filters(cfg, title or "", desc or "", price, dist)
+
+                    if cfg_res["drop"]:
+                        section("DROP")
+                        kv("reason", cfg_res["reason"])
+                        continue
+
+                    cfg_bonus = cfg_res["bonus"]
+                    section("CFG SCORE")
+                    kv("cfg_bonus", cfg_bonus)
 
                     analysis = analyze_ad(
                         model=model,
-                        judge_model="qwen2.5:7b",
+                        judge_model="deepseek-r1:8b",
                         title=title or "",
                         description=desc or "",
                         price_ron=price,
                         verbose_threshold=5.0,
-                        keyword_bonus=kb,
+                        keyword_bonus=kb + cfg_bonus,
                         domain=domain,
                         stream_cb=stream_cb,
                     )
@@ -390,7 +481,10 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                         ad["resale_value_high"] = int(verbose.get("resale_value_high", 0) or 0)
                         ad["profit_low"] = int(verbose.get("profit_low", 0) or 0)
                         ad["profit_high"] = int(verbose.get("profit_high", 0) or 0)
-                        ad["notes"] = verbose.get("notes", "") or ""
+                        n = verbose.get("notes", "")
+                        if isinstance(n, (list, dict)):
+                            n = json.dumps(n, ensure_ascii=False)
+                        ad["notes"] = n
                         ad["drive_time_min"] = None
                     else:
                         ad["confidence"] = None

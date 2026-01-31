@@ -77,7 +77,8 @@ Exemple de domenii:
 Doar JSON.
 """.strip()
 
-    resp = ollama_generate(model, prompt, label="WIZARD_Q")
+    wizard_model = "qwen2.5:7b"
+    resp = ollama_generate(wizard_model, prompt, label="WIZARD_Q")
     data = _safe_json_loads(resp)
 
     qs = (data or {}).get("questions")
