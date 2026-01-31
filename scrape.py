@@ -9,20 +9,13 @@ from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 
 from config import settings
-from db import init_db, upsert_ad
-from analyze import analyze_ad
+from db import init_db, upsert_ad, get_profile
+from analyze import analyze_ad, classify_intent
 from geo import geocode_nominatim, distance_from_cluj
 
-PRICE_RE = re.compile(r"(\d[\d\.\s]*)")
+from events import emit
 
-POSITIVE_KW = [
-    "doar lumineaza", "doar luminează", "backlight", "fara imagine", "fără imagine",
-    "porneste dar nu afiseaza", "pornește dar nu afișează", "sunet dar"
-]
-NEGATIVE_KW = [
-    "dungi", "linii", "crăpat", "spart", "fisurat", "pata", "pată",
-    "jumatate ecran", "jumătate ecran", "lovit", "a cazut", "a căzut"
-]
+PRICE_RE = re.compile(r"(\d[\d\.\s]*)")
 
 def keyword_score(text: str, hard_yes: list[str], hard_no: list[str]) -> float:
     t = (text or "").lower()
@@ -40,6 +33,29 @@ def keyword_score(text: str, hard_yes: list[str], hard_no: list[str]) -> float:
 
     return score
 
+def parse_profile_cfg(notes: str | None):
+    notes = notes or ""
+    cfg = {"domain": "generic"}
+    rubric = ""
+
+    m = re.search(r"CFG:\s*(\{.*\})", notes, flags=re.DOTALL)
+    if m:
+        raw = m.group(1).strip()
+        try:
+            cfg = json.loads(raw)
+        except Exception:
+            cut = raw.split("\nRUBRIC:", 1)[0].strip()
+            try:
+                cfg = json.loads(cut)
+            except Exception:
+                cfg = {"domain": "generic"}
+
+    mr = re.search(r"RUBRIC:\s*\n(.*)", notes, flags=re.DOTALL)
+    if mr:
+        rubric = mr.group(1).strip()
+
+    domain = str(cfg.get("domain") or "generic").strip()
+    return cfg, rubric, domain
 
 def parse_price_ron(text: str | None):
     if not text:
@@ -55,7 +71,6 @@ def parse_price_ron(text: str | None):
         return None
 
 def extract_next_data(html: str):
-    # Many OLX pages include JSON state; if present, we can mine coords/images/location.
     soup = BeautifulSoup(html, "html.parser")
     script = soup.find("script", id="__NEXT_DATA__")
     if not script or not script.string:
@@ -66,15 +81,12 @@ def extract_next_data(html: str):
         return None
 
 def extract_coords_from_next(next_data: dict):
-    # OLX structure varies; try common paths safely.
     try:
         props = next_data.get("props", {})
         page = props.get("pageProps", {})
-        # sometimes offer object exists
         offer = page.get("offer") or page.get("ad") or page.get("data")
         if isinstance(offer, dict):
             loc = offer.get("location") or {}
-            # Some variants: loc["coordinates"] or loc["lat"]/["lon"]
             coords = loc.get("coordinates")
             if isinstance(coords, dict):
                 lat = coords.get("latitude") or coords.get("lat")
@@ -91,7 +103,6 @@ def extract_coords_from_next(next_data: dict):
 
 def extract_image_from_html(html: str):
     soup = BeautifulSoup(html, "html.parser")
-    # Prefer og:image
     og = soup.find("meta", property="og:image")
     if og and og.get("content"):
         return og["content"]
@@ -100,14 +111,8 @@ def extract_image_from_html(html: str):
 
 def extract_title_desc_location_price(html: str):
     soup = BeautifulSoup(html, "html.parser")
+    data = {"title": None, "desc": None, "price": None}
 
-    data = {
-        "title": None,
-        "desc": None,
-        "price": None,
-    }
-
-    # --- TITLE ---
     h1 = soup.find("h1")
     if h1:
         data["title"] = h1.get_text(strip=True)
@@ -117,7 +122,6 @@ def extract_title_desc_location_price(html: str):
         if ogt and ogt.get("content"):
             data["title"] = ogt["content"].strip()
 
-    # --- DESCRIPTION ---
     for sel in [
         "div[data-cy='ad_description']",
         "div[data-testid='ad-description']",
@@ -128,7 +132,6 @@ def extract_title_desc_location_price(html: str):
             data["desc"] = node.get_text("\n", strip=True)
             break
 
-    # --- PRICE ---
     meta_price = soup.find("meta", property="product:price:amount")
     if meta_price and meta_price.get("content"):
         try:
@@ -139,40 +142,67 @@ def extract_title_desc_location_price(html: str):
     if data["price"] is None:
         price_node = soup.find(attrs={"data-testid": "ad-price-container"})
         if price_node:
-            data["price"] = parse_price_ron(
-                price_node.get_text(" ", strip=True)
-            )
+            data["price"] = parse_price_ron(price_node.get_text(" ", strip=True))
 
     return data
 
-
 def normalize_city(loc: str) -> str:
-    # ex: "Bucuresti - Ilfov, Bucuresti, Sectorul 5"
     parts = [p.strip() for p in (loc or "").split(",") if p.strip()]
     if not parts:
         return ""
-    # alege primul “oraș” care nu e județ combinat
-    # în exemplu: parts[0] = "Bucuresti - Ilfov" (nu ideal), parts[1] = "Bucuresti" (ideal)
     if len(parts) >= 2:
         return parts[1]
     return parts[0]
 
 def extract_location_from_html(html: str):
     soup = BeautifulSoup(html, "html.parser")
-
     img = soup.select_one(".qa-static-ad-map-container img[alt]")
     if img and img.get("alt"):
         full = img["alt"].strip()
         city = normalize_city(full)
         return city or full
-
     return None
-def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None, max_ads: int | None = None):
+
+def extract_distance_from_html(html: str):
+    soup = BeautifulSoup(html, "html.parser")
+    d = soup.select_one("[data-testid='distance-field']")
+    if not d:
+        return None
+    txt = d.get_text(strip=True).lower()
+    m = re.search(r"(\d+)\s*km", txt)
+    if m:
+        return float(m.group(1))
+    return None
+
+def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None, max_ads: int | None = None, run_id: str | None = None):
     init_db()
     max_pages = max_pages or settings.MAX_PAGES
-
     search_url = f"{settings.OLX_BASE}/oferte/q-{query}/"
     collected = 0
+
+    # --- LIVE wrappers (log + emit) ---
+    def live_section(title: str):
+        section(title)
+        emit(run_id, "section", {"title": title})
+
+    def live_kv(k: str, v):
+        kv(k, v)
+        emit(run_id, "kv", {"key": k, "value": v})
+
+    def live_block(lbl: str, content: str):
+        block(lbl, content)
+        emit(run_id, "block", {"label": lbl, "content": content})
+
+    def stream_cb(label: str, kind: str, payload: dict):
+        # ✅ probe: apare în Log, deci sigur vine din LLM
+        emit(run_id, "kv", {"key": f"LLM:{label}", "value": kind})
+        emit(run_id, "llm", {"label": label, "kind": kind, **payload})
+
+    emit(run_id, "section", {"title": "SEARCH"})
+    emit(run_id, "kv", {"key": "query", "value": query})
+    emit(run_id, "kv", {"key": "model", "value": model})
+    emit(run_id, "kv", {"key": "max_pages", "value": max_pages})
+    emit(run_id, "kv", {"key": "max_ads", "value": (max_ads or settings.MAX_ADS_PER_RUN)})
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -185,7 +215,6 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
             html = page.content()
             soup = BeautifulSoup(html, "html.parser")
 
-            # ad links: OLX varies; we pick anchors that look like offer links
             links = []
             for a in soup.find_all("a", href=True):
                 href = a["href"]
@@ -198,22 +227,11 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                 limit_ads = max_ads or settings.MAX_ADS_PER_RUN
                 if collected >= limit_ads:
                     break
+
                 ad_page = context.new_page()
                 try:
                     ad_page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     ad_html = ad_page.content()
-
-                    def extract_distance_from_html(html: str):
-                        soup = BeautifulSoup(html, "html.parser")
-                        d = soup.select_one("[data-testid='distance-field']")
-                        if not d:
-                            return None
-                        txt = d.get_text(strip=True).lower()
-                        # ex: "la 450km de tine"
-                        m = re.search(r"(\d+)\s*km", txt)
-                        if m:
-                            return float(m.group(1))
-                        return None
 
                     parsed = extract_title_desc_location_price(ad_html)
                     title = parsed["title"]
@@ -222,14 +240,14 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                     loc = extract_location_from_html(ad_html)
                     img = extract_image_from_html(ad_html)
 
-                    section("AD FOUND")
-                    kv("url", url)
-                    kv("title", title)
-                    kv("price_ron", price)
-                    kv("location", loc)
+                    live_section("AD FOUND")
+                    live_kv("url", url)
+                    live_kv("title", title)
+                    live_kv("price_ron", price)
+                    live_kv("location", loc)
 
                     if enabled("AGENT_LOG_DESC"):
-                        block("description", trunc(desc or "", 1200))
+                        live_block("description", trunc(desc or "", 1200))
 
                     next_data = extract_next_data(ad_html)
                     lat = lon = None
@@ -238,63 +256,104 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                         if coords:
                             lat, lon = coords
 
-                    # fallback geocoding if only city text exists
                     if (lat is None or lon is None) and loc:
-                        # take first part like "Cluj-Napoca" if possible
                         place = loc.split("-")[0].strip()
                         coords = geocode_nominatim(place + ", Romania")
                         if coords:
                             lat, lon = coords
 
                     dist = extract_distance_from_html(ad_html)
-
-                    # fallback doar dacă OLX nu dă distanța
                     if dist is None:
                         dist = distance_from_cluj(lat, lon)
 
-                    section("GEO")
-                    kv("lat", lat)
-                    kv("lon", lon)
-                    kv("distance_km", f"{dist:.1f}" if dist else None)
-
-                    from analyze import analyze_ad
-                    import json
-
-                    # ...
-
-                    from db import get_profile
+                    live_section("GEO")
+                    live_kv("lat", lat)
+                    live_kv("lon", lon)
+                    live_kv("distance_km", f"{dist:.1f}" if dist else None)
 
                     prof = get_profile(profile_id)
                     hard_yes = prof.get("hard_yes", []) if prof else []
                     hard_no = prof.get("hard_no", []) if prof else []
+                    notes = prof.get("notes", "") if prof else ""
 
+                    cfg, rubric, domain = parse_profile_cfg(notes)
+
+                    # 1) intent
+                    intent = classify_intent(model, title or "", desc or "", stream_cb=stream_cb)
+                    live_section("INTENT")
+                    live_kv("intent", intent)
+                    live_kv("domain", domain)
+
+                    # stricte: domain-level exclude (rămân hard)
+                    if domain == "rentals_cabins":
+                        if intent != "RENTAL":
+                            live_section("DROP")
+                            live_kv("reason", "intent_mismatch_for_rentals")
+                            # (nu salvăm anunțuri irelevante pt rentals)
+                            continue
+
+                    elif domain == "electronics_tv_flip":
+                        if intent == "OFFER_SERVICE":
+                            live_section("DROP")
+                            live_kv("reason", "service_ad_excluded")
+                            # (nu salvăm servicii)
+                            continue
+
+                    # 2) keyword bonus
                     kb = keyword_score((title or "") + "\n" + (desc or ""), hard_yes, hard_no)
+                    live_section("KEYWORD SCORE")
+                    live_kv("keyword_bonus", kb)
 
-
-                    section("KEYWORD SCORE")
-                    kv("keyword_bonus", kb)
                     analysis = analyze_ad(
                         model=model,
-                        judge_model="qwen2.5:7b",  # sau îl dai din CLI
+                        judge_model="qwen2.5:7b",
                         title=title or "",
                         description=desc or "",
                         price_ron=price,
                         verbose_threshold=5.0,
-                        keyword_bonus=kb
+                        keyword_bonus=kb,
+                        domain=domain,
+                        stream_cb=stream_cb,
                     )
-
 
                     minimal = analysis["minimal"]
                     verbose = analysis["verbose"]
-                    if "judge_error" in minimal:
-                        section("JUDGE ERROR (fallback to minimal)")
-                        kv("error", minimal["judge_error"])
 
-                    # salvezi minimal mereu
+                    # --- Decide save vs soft drop ---
+                    save_strict = True
+                    if domain == "rentals_cabins":
+                        try:
+                            score = float(minimal.get("score", 0))
+                            scam = float(minimal.get("scam_risk", 10))
+                        except Exception:
+                            score, scam = 0, 10
+                        save_strict = (score >= 7.0 and scam <= 5.0 and minimal.get("verdict") != "NU MERITĂ")
+
+                    elif domain == "electronics_tv_flip":
+                        try:
+                            score = float(minimal.get("score", 0))
+                        except Exception:
+                            score = 0
+                        verdict = (minimal.get("verdict") or "").upper()
+                        save_strict = (score >= 7.0 and verdict in {"MERITĂ", "MERITĂ LA PIESE"})
+
+                    # ✅ tu ai zis: să nu mai “dispară” — deci salvăm și soft-drop
+                    soft_drop_reason = None
+                    if not save_strict:
+                        live_section("DROP")
+                        live_kv("reason", "not_good_enough_after_analysis")
+                        live_kv("score", minimal.get("score"))
+                        live_kv("verdict", minimal.get("verdict"))
+                        soft_drop_reason = f"[SOFT DROP] not_good_enough_after_analysis | score={minimal.get('score')} | verdict={minimal.get('verdict')}"
+
+                    if "judge_error" in minimal:
+                        live_section("JUDGE ERROR (fallback to minimal)")
+                        live_kv("error", minimal["judge_error"])
+
                     from datetime import timezone
 
                     ad = {
-                        "profile_id":profile_id,
+                        "profile_id": profile_id,
                         "url": url,
                         "title": title or "",
                         "description": desc or "",
@@ -306,22 +365,21 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                         "lon": float(lon) if lon is not None else None,
                         "scraped_at": datetime.now(timezone.utc).isoformat(),
                     }
+
                     ad.update({
                         "score": float(minimal.get("score", 5.0)),
                         "verdict": minimal.get("verdict", ""),
+                        "likely_fix": minimal.get("likely_fix", ""),
                         "repair_estimate_low": int(minimal.get("repair_estimate_low", 0) or 0),
                         "repair_estimate_high": int(minimal.get("repair_estimate_high", 0) or 0),
                         "parts_suspected": minimal.get("parts_suspected", ""),
                         "reasoning": minimal.get("reasoning_short", ""),
                     })
 
-                    # dacă vrei să vezi rapid când a fost fallback
-                    if minimal.get("reasoning_short", "").startswith("Fallback"):
-                        ad["parse_ok"] = 0
-                    else:
-                        ad["parse_ok"] = 1
+                    # parse_ok heuristic
+                    ad["parse_ok"] = 0 if (minimal.get("reasoning_short", "").startswith("Fallback")) else 1
 
-                    # dacă avem verbose, îl serializăm în câmpuri extra
+                    # verbose fields
                     if verbose:
                         ad["confidence"] = float(verbose.get("confidence", 0.5))
                         ad["signals_positive"] = json.dumps(verbose.get("signals_positive", []), ensure_ascii=False)
@@ -332,8 +390,8 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                         ad["resale_value_high"] = int(verbose.get("resale_value_high", 0) or 0)
                         ad["profit_low"] = int(verbose.get("profit_low", 0) or 0)
                         ad["profit_high"] = int(verbose.get("profit_high", 0) or 0)
-                        ad["notes"] = verbose.get("notes", "")
-                        ad["likely_fix"] = minimal.get("likely_fix", minimal.get("parts_suspected", ""))
+                        ad["notes"] = verbose.get("notes", "") or ""
+                        ad["drive_time_min"] = None
                     else:
                         ad["confidence"] = None
                         ad["signals_positive"] = None
@@ -344,15 +402,27 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
                         ad["resale_value_high"] = None
                         ad["profit_low"] = None
                         ad["profit_high"] = None
-                        ad["notes"] = None
-                        ad["likely_fix"] = None
+                        ad["drive_time_min"] = None
+                        ad["notes"] = ""
+
+                    if "judge_error" in minimal:
+                        ad["judge_error"] = minimal["judge_error"]
+                    else:
+                        ad["judge_error"] = None
+
+                    if soft_drop_reason:
+                        # nu avem coloană “drop_reason” în DB, deci o punem în notes
+                        ad["notes"] = (ad.get("notes") or "").strip()
+                        ad["notes"] = (ad["notes"] + "\n" + soft_drop_reason).strip()
+
                     upsert_ad(ad)
+
+                    # “collected” = câte am procesat, nu câte au trecut strict
                     collected += 1
 
                 finally:
                     ad_page.close()
 
-            # next page (if exists)
             next_btn = page.query_selector("a[rel='next']")
             if not next_btn:
                 break
@@ -363,18 +433,3 @@ def scrape(query: str, model: str, profile_id: int, max_pages: int | None = None
         browser.close()
 
     return collected
-
-if __name__ == "__main__":
-    import argparse
-    ap = argparse.ArgumentParser()
-    #ap.add_argument("--query", required=True, help="OLX query, ex: 'tv samsung defect'")
-    ap.add_argument("--model", default=settings.DEFAULT_MODEL, help="Ollama model name")
-    ap.add_argument("--pages", type=int, default=settings.MAX_PAGES)
-    args = ap.parse_args()
-    from queries import QUERIES
-
-    for q in QUERIES:
-        print(f"[SEARCH] {q}")
-        scrape(query=q, model=args.model, max_pages=args.pages)
-    #n = scrape(query=args.query, model=args.model, max_pages=args.pages)
-    #print(f"Scraped+analyzed: {n} ads")

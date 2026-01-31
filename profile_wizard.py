@@ -51,48 +51,41 @@ def _safe_json_loads(resp: str) -> dict | None:
 
 def wizard_generate_questions(model: str, goal: str):
     prompt = f"""
-    Ești un expert în căutări OLX și construiești un profil de căutare pentru un scraper.
+Ești un expert în căutări OLX și construiești un wizard de întrebări pentru a înțelege exact ce vrea utilizatorul.
 
-    GOAL: {goal}
+GOAL (cerința inițială): {goal}
 
-    Returnează STRICT JSON valid (fără text extra) cu schema:
+Returnează STRICT JSON valid (fără text extra) cu schema:
 
-    {{
-      "name": "...",
-      "notes": "...",
-      "queries": ["..."],
-      "hard_yes": ["..."],
-      "hard_no": ["..."],
-      "questions": ["..."]
-    }}
+{{
+  "questions": [
+    {{"id":"q1","q":"...","type":"text"}},
+    {{"id":"q2","q":"...","type":"select","choices":["...","..."]}}
+  ]
+}}
 
-    Reguli critice:
-    - queries: 4-10 expresii de căutare OLX, scurte, orientate pe ce scriu oamenii în anunțuri.
-      * Include variante cu și fără diacritice (ex: "inchiriere" și "închiriere").
-      * Include sinonime uzuale (ex: "cabana/cabană/chalet/pensiune", "TV/televizor", "defect/stricat/nu porneste").
-      * Include forme "de inchiriat", "inchiriez", "ofer spre inchiriere", "pentru piese", "defect", "nu porneste" când se potrivesc.
-    - hard_yes: 8-25 termeni/expresii care cresc scorul (semnale puternice din titlu/descriere).
-    - hard_no: 8-25 termeni/expresii care scad scorul sau exclud (capcane, alt tip de anunț, stare nedorită).
-    - questions: 2-6 întrebări doar dacă lipsesc constrângeri importante pentru a căuta bine.
+Reguli:
+- 3-8 întrebări, doar ce e necesar ca să faci o căutare bună și să filtrezi rezultate.
+- Întrebările trebuie să fie adaptate la GOAL.
+- Folosește type: "text" sau "select". La "select" pune choices.
+- Nu pune întrebări generice inutile.
 
-    Foarte important:
-    - Nu inventa lucruri din aer. Folosește GOAL + ANSWERS.
-    - Dacă GOAL e despre închiriere: pune termeni de închiriere + exclude vânzare.
-    - Dacă GOAL e despre reparație/piese: pune termeni de defect + exclude "perfect funcțional"/"nou".
+Exemple de domenii:
+- Cabane de închiriat: perioadă, buget/noapte, locație+rază, nr persoane, facilități, deal-breakers.
+- TV flip (TV defect pt reparat/revândut): buget max, diagonala, brand, defecte acceptate/interzise, scop (revânzare vs piese).
 
-    Doar JSON.
-    """.strip()
+Doar JSON.
+""".strip()
 
     resp = ollama_generate(model, prompt, label="WIZARD_Q")
     data = _safe_json_loads(resp)
 
-    if not data or "questions" not in data or not isinstance(data["questions"], list) or len(data["questions"]) < 3:
-        # fallback ca să nu crape wizardul
+    qs = (data or {}).get("questions")
+    if not isinstance(qs, list) or len(qs) < 2:
         return _DEFAULT_QUESTIONS
 
-    # normalizează minim
     out = []
-    for i, q in enumerate(data["questions"], start=1):
+    for i, q in enumerate(qs, start=1):
         if not isinstance(q, dict):
             continue
         qid = q.get("id") or f"q{i}"
@@ -108,46 +101,68 @@ def wizard_generate_questions(model: str, goal: str):
 
 def wizard_build_profile(model: str, goal: str, answers: dict):
     prompt = f"""
-Construiește un profil pentru agentul OLX.
+Construiește un profil de căutare OLX pentru un agent scraper.
 
 GOAL: {goal}
 
 ANSWERS (dicționar id->răspuns):
 {json.dumps(answers, ensure_ascii=False, indent=2)}
 
-Returnează STRICT un JSON valid cu schema:
+Returnează STRICT JSON valid (fără text extra) cu schema:
 
 {{
   "name": "...",
-  "notes": "...",
+  "domain": "rentals_cabins" | "electronics_tv_flip" | "generic",
+  "cfg": {{
+    "intent": "RENT" | "BUY_BROKEN",
+    "max_price_ron": null | number,
+    "radius_km": null | number,
+    "areas": [ ... ],
+    "min_capacity": null | number,
+    "must_have": [ ... ],
+    "avoid": [ ... ],
+
+    "max_buy_ron": null | number,
+    "min_profit_ron": null | number,
+    "diag_min": null | number,
+    "diag_max": null | number,
+    "brands": [ ... ],
+    "avoid_fix": [ ... ]
+  }},
+  "rubric": "TEXT SCURT cu reguli de evaluare (ce e bun/rău, ce să penalizeze).",
   "queries": ["...","..."],
   "hard_yes": ["..."],
   "hard_no": ["..."],
   "questions": ["..."]
 }}
 
-Reguli:
-- queries: 2-8 expresii OLX (ex: "tv samsung defect", "televizor smart spart" etc) adaptate goal-ului.
-- hard_yes/hard_no: keywords utile pt detectare rapidă în titlu/descriere.
-- questions: întrebări de follow-up dacă verdictul e NECLAR.
-- Fără explicații, doar JSON.
+Reguli critice:
+- Dacă goal/answers indică închiriere cabane => domain="rentals_cabins", cfg.intent="RENT"
+  - queries să fie WIDE: "cabana de inchiriat", "cabană de închiriat", "chalet inchiriat", "inchiriez cabana", "ofer spre inchiriere cabana"
+  - hard_no să excludă vânzări: "de vanzare", "vând", "teren", "imobil", "proprietate de vanzare"
+- Dacă goal/answers indică TV-uri defecte pentru reparat/revânzare => domain="electronics_tv_flip", cfg.intent="BUY_BROKEN"
+  - queries să fie WIDE (NU include "reparatii/service"): "tv defect", "televizor defect", "nu porneste", "fara imagine", "se aude dar nu se vede"
+  - hard_no să penalizeze servicii: "repar", "service", "la domiciliu", "firma", "interventii"
+- rubric trebuie să fie specific domeniului:
+  - cabane: buget, locație, capacitate, facilități, scam signals (avans integral, whatsapp, fără contract etc.)
+  - tv flip: exclude panel/dungi/crăpat, estimează costuri TCON/PSU/mainboard/backlight, estimare revânzare + profit.
+
+Doar JSON.
 """.strip()
 
     resp = ollama_generate(model, prompt, label="WIZARD_PROFILE")
     data = _safe_json_loads(resp)
 
     if not data:
-        # fallback minimal
         return {
             "name": "Profile (auto)",
             "notes": goal,
             "queries": [goal],
             "hard_yes": [],
             "hard_no": [],
-            "questions": ["Poți da mai multe detalii despre defect și stare?"],
+            "questions": ["Poți da mai multe detalii?"],
         }
 
-    # normalizează câmpurile
     def _as_list(x):
         if x is None:
             return []
@@ -157,9 +172,20 @@ Reguli:
             return [v.strip() for v in x.splitlines() if v.strip()]
         return []
 
+    domain = str(data.get("domain") or "generic").strip()
+    cfg = data.get("cfg") if isinstance(data.get("cfg"), dict) else {}
+    rubric = str(data.get("rubric") or "").strip()
+
+    # Împachetăm cfg + rubric în notes ca să nu schimbi DB schema acum
+    notes_human = str(data.get("notes") or goal).strip()
+    notes = "CFG: " + json.dumps({"domain": domain, **cfg}, ensure_ascii=False) + "\n"
+    if rubric:
+        notes += "RUBRIC:\n" + rubric + "\n"
+    notes += "\n" + notes_human
+
     return {
         "name": str(data.get("name") or "Profile (auto)").strip(),
-        "notes": str(data.get("notes") or goal).strip(),
+        "notes": notes,
         "queries": _as_list(data.get("queries")),
         "hard_yes": _as_list(data.get("hard_yes")),
         "hard_no": _as_list(data.get("hard_no")),
