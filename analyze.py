@@ -331,7 +331,17 @@ def analyze_ad(
     except Exception:
         minimal_score = 5.0
 
-    minimal_score = max(0.0, min(10.0, minimal_score + keyword_bonus))
+    adj = float(keyword_bonus or 0.0)
+
+    # negative strong, positive cu wiggle (tune aici)
+    adj = max(-2.5, min(1.2, adj))
+
+    minimal["score_model"] = minimal_score
+    minimal["bonus_applied"] = adj
+
+    minimal_score = max(0.0, min(10.0, minimal_score + adj))
+    minimal["score"] = minimal_score
+
     minimal["score"] = minimal_score
 
     out = {"minimal": minimal, "verbose": None}

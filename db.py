@@ -84,7 +84,19 @@ def upsert_ad(ad: dict):
         "resale_value_low", "resale_value_high", "profit_low", "profit_high", "drive_time_min",
         "parse_ok", "judge_error", "notes",
     ]
-    values = [ad.get(c) for c in cols]
+
+    def _sql_value(v):
+        if v is None:
+            return None
+        # sqlite3 nu suportă list/dict direct
+        if isinstance(v, (list, dict)):
+            return json.dumps(v, ensure_ascii=False)
+        # booleans -> int (opțional)
+        if isinstance(v, bool):
+            return int(v)
+        return v
+
+    values = [_sql_value(ad.get(c)) for c in cols]
 
     with connect() as con:
         con.execute(f"""
